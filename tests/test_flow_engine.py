@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
+
+from audio_separator.separator.roformer.roformer_loader import RoformerLoader
+from audio_separator.separator.uvr_lib_v5.roformer import mel_band_roformer
 
 from app.core.models import Job
 from app.flow.adapters import (
@@ -10,18 +13,21 @@ from app.flow.adapters import (
     AdapterRegistry,
     MockAdapter,
 )
+from app.flow.artifacts import AudioArtifact, hash_file
 from app.flow.cache import ArtifactCache
 from app.flow.capabilities import CapabilityChecker
 from app.flow.defaults import build_default_model_registry
 from app.flow.executor import FlowExecutor
 from app.flow.io import load_flow
+from app.flow.local_roformer_runner import (
+    _install_mel_band_mask_estimator_workaround,
+)
 from app.flow.planner import FlowPlanner
 from app.flow.registry import ModelRegistry
 from app.flow.schema import FlowDefinition, ModelDefinition, PortDefinition
 from app.flow.semantic_types import is_semantically_compatible
 from app.flow.stemdeck_adapters import StemDeckDemucsAdapter, StemDeckVocalSplitAdapter
 from app.flow.validation import FlowValidator
-from app.flow.artifacts import AudioArtifact, hash_file
 
 ROOT = Path(__file__).parents[1]
 
@@ -50,6 +56,16 @@ def test_default_demo_flow_is_valid():
     assert result.valid, [issue.message for issue in result.issues]
     assert FlowPlanner().plan(flow).stages[0].nodes == ("primary",)
     assert FlowPlanner().plan(flow).stages[1].nodes == ("vocal_split",)
+
+
+def test_default_guitar_branch_flow_is_valid():
+    flow = load_flow(ROOT / "docs" / "flows" / "demo-vocals-guitar.yaml")
+    result = FlowValidator(build_default_model_registry()).validate(flow)
+
+    assert result.valid, [issue.message for issue in result.issues]
+    plan = FlowPlanner().plan(flow)
+    assert plan.stages[0].nodes == ("primary",)
+    assert plan.stages[1].nodes == ("guitar_split", "vocal_split")
 
 
 def test_planner_exposes_parallel_branches():
@@ -104,7 +120,6 @@ def test_planner_exposes_parallel_branches():
     plan = FlowPlanner().plan(flow)
     assert plan.stages[0].nodes == ("primary",)
     assert plan.stages[1].nodes == ("guitar", "vocals")
-
 
 
 def test_capability_checker_collects_adapter_preflight(monkeypatch):
@@ -177,32 +192,107 @@ def test_executor_cache_and_multiple_inputs(tmp_path: Path):
                 "guitar": {"semantic_type": "guitar"},
             },
             "nodes": {
-                "vocals": {"model": "vocal", "inputs": {"audio": "inputs.vocals"}},
-                "guitar": {"model": "guitar", "inputs": {"audio": "inputs.guitar"}},
+                "vocal_split": {
+                    "model": "vocal",
+                    "inputs": {"audio": "inputs.vocals"},
+                },
+                "guitar_split": {
+                    "model": "guitar",
+                    "inputs": {"audio": "inputs.guitar"},
+                },
             },
             "outputs": {
-                "lead_vocals": {"source": "vocals.lead"},
-                "lead_guitar": {"source": "guitar.lead"},
+                "lead_vocals": {"source": "vocal_split.lead"},
+                "lead_guitar": {"source": "guitar_split.lead"},
             },
         }
     )
     adapters = AdapterRegistry()
     adapters.register(MockAdapter())
-    executor = FlowExecutor(models, adapters, ArtifactCache(tmp_path / "cache"), tmp_path / "runs")
+    executor = FlowExecutor(
+        models,
+        adapters,
+        ArtifactCache(tmp_path / "cache"),
+        tmp_path / "runs",
+    )
 
-    first = executor.execute(flow, {"vocals": vocals, "guitar": guitar}, run_id="one")
-    second = executor.execute(flow, {"vocals": vocals, "guitar": guitar}, run_id="two")
+    first = executor.execute(
+        flow,
+        {"vocals": vocals, "guitar": guitar},
+        run_id="one",
+    )
+    second = executor.execute(
+        flow,
+        {"vocals": vocals, "guitar": guitar},
+        run_id="two",
+    )
 
     assert (first.run_dir / "inputs" / "vocals.wav").is_file()
     assert (first.run_dir / "inputs" / "guitar.wav").is_file()
-    assert second.cache_hits == {"vocals", "guitar"}
+    assert second.cache_hits == {"vocal_split", "guitar_split"}
 
-    first_manifest = json.loads((first.run_dir / "run.json").read_text(encoding="utf-8"))
-    second_manifest = json.loads((second.run_dir / "run.json").read_text(encoding="utf-8"))
+    first_manifest = json.loads(
+        (first.run_dir / "run.json").read_text(encoding="utf-8")
+    )
+    second_manifest = json.loads(
+        (second.run_dir / "run.json").read_text(encoding="utf-8")
+    )
     assert "environment" in first_manifest
-    assert first_manifest["nodes"]["vocals"]["provenance_origin"] == "current_run"
-    assert second_manifest["nodes"]["vocals"]["provenance_origin"] == "cache_manifest"
-    assert "produced_environment" in second_manifest["nodes"]["vocals"]
+    assert (
+        first_manifest["nodes"]["vocal_split"]["provenance_origin"]
+        == "current_run"
+    )
+    assert (
+        second_manifest["nodes"]["vocal_split"]["provenance_origin"]
+        == "cache_manifest"
+    )
+    assert "produced_environment" in second_manifest["nodes"]["vocal_split"]
+
+
+def test_roformer_workaround_propagates_mlp_expansion_factor(monkeypatch):
+    captured: dict[str, int] = {}
+
+    class FakeMaskEstimator:
+        def __init__(
+            self,
+            dim,
+            dim_inputs,
+            depth,
+            mlp_expansion_factor=4,
+        ):
+            captured["mlp_expansion_factor"] = mlp_expansion_factor
+
+    def fake_create(self, config):
+        mel_band_roformer.MaskEstimator(
+            dim=384,
+            dim_inputs=(10, 20),
+            depth=2,
+        )
+        return object()
+
+    monkeypatch.setattr(
+        mel_band_roformer,
+        "MaskEstimator",
+        FakeMaskEstimator,
+    )
+    monkeypatch.setattr(
+        RoformerLoader,
+        "_create_mel_band_roformer",
+        fake_create,
+    )
+
+    original_mask_estimator = mel_band_roformer.MaskEstimator
+
+    _install_mel_band_mask_estimator_workaround()
+
+    loader = object.__new__(RoformerLoader)
+    RoformerLoader._create_mel_band_roformer(
+        loader,
+        {"mlp_expansion_factor": 2},
+    )
+
+    assert captured["mlp_expansion_factor"] == 2
+    assert mel_band_roformer.MaskEstimator is original_mask_estimator
 
 
 def test_native_demucs_adapter_wraps_existing_separator(tmp_path: Path, monkeypatch):

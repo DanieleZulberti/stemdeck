@@ -4,6 +4,7 @@ from app.core.config import MODELS_DIR
 
 from .adapters import AdapterRegistry, AudioSeparatorAdapter
 from .registry import ModelRegistry
+from .local_roformer import LocalRoformerAdapter
 from .schema import ModelDefinition, PortDefinition
 from .stemdeck_adapters import StemDeckDemucsAdapter, StemDeckVocalSplitAdapter
 
@@ -36,6 +37,23 @@ def build_default_model_registry() -> ModelRegistry:
             },
         )
     )
+    registry.register(
+        ModelDefinition(
+            id="local-lead-rhythm-guitar-roformer",
+            adapter="local-roformer",
+            inputs={"audio": PortDefinition(semantic_type="guitar")},
+            outputs={
+                "lead": PortDefinition(semantic_type="lead_guitar"),
+                "rhythm": PortDefinition(semantic_type="rhythm_guitar"),
+            },
+            requirements={"user_provided_model": True},
+            runtime={
+                "checkpoint_env": "STEMDECK_GUITAR_SPLIT_CHECKPOINT",
+                "config_env": "STEMDECK_GUITAR_SPLIT_CONFIG",
+                "output_labels": {"lead": "Lead", "rhythm": "Rhythm"},
+            },
+        )
+    )
     return registry
 
 
@@ -44,4 +62,5 @@ def build_default_adapter_registry() -> AdapterRegistry:
     registry.register(StemDeckDemucsAdapter())
     registry.register(StemDeckVocalSplitAdapter())
     registry.register(AudioSeparatorAdapter(MODELS_DIR / "audio-separator"))
+    registry.register(LocalRoformerAdapter())
     return registry
