@@ -1,0 +1,47 @@
+name: stemdeck-demo-vocals
+version: 1
+
+validation:
+  semantic: strict
+
+inputs:
+  song:
+    type: audio
+    semantic_type: mixture
+
+nodes:
+  primary:
+    model: stemdeck-htdemucs-6s
+    inputs:
+      audio: inputs.song
+    outputs:
+      vocals: {expose: false, retain: cache}
+      guitar: {expose: true, retain: project}
+      bass: {expose: true, retain: project}
+      drums: {expose: true, retain: project}
+      piano: {expose: true, retain: project}
+      other: {expose: true, retain: project}
+
+  vocal_split:
+    model: stemdeck-lead-backing-vocals
+    inputs:
+      audio: primary.vocals
+    outputs:
+      lead: {expose: true, retain: project}
+      backing: {expose: true, retain: project}
+
+outputs:
+  lead_vocals:
+    source: vocal_split.lead
+  backing_vocals:
+    source: vocal_split.backing
+  guitar:
+    source: primary.guitar
+  bass:
+    source: primary.bass
+  drums:
+    source: primary.drums
+  piano:
+    source: primary.piano
+  other:
+    source: primary.other
