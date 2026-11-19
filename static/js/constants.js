@@ -55,16 +55,75 @@ export const STEM_DISPLAY = new Proxy({}, {
 
 // FL Studio-style channel palette: saturated but slightly dusty, designed
 // to read well on a dark background.
-export const STEM_COLORS = {
+export const SEMANTIC_COLORS = {
+  mixture: "#a8b0bd",
+  unknown_audio: "#88a8c8",
   vocals: "#e85f6f",
-  drums: "#e89048",
-  bass: "#e8b848",
-  guitar: "#88d878",
-  piano: "#b88fe8",
-  other: "#88a8c8",
-  original: "#a8b0bd",
   lead_vocals: "#e8748a",
   backing_vocals: "#c98fe0",
+  choir: "#d77aa8",
+  drums: "#e89048",
+  bass: "#e8b848",
+  instrument: "#78a8b8",
+  guitar: "#88d878",
+  lead_guitar: "#9ae68b",
+  rhythm_guitar: "#69bd68",
+  keys: "#aa8fe0",
+  piano: "#b88fe8",
+  keyboard: "#9f88dc",
+};
+
+export const SEMANTIC_PARENTS = {
+  lead_vocals: "vocals",
+  backing_vocals: "vocals",
+  choir: "vocals",
+  guitar: "instrument",
+  lead_guitar: "guitar",
+  rhythm_guitar: "guitar",
+  bass: "instrument",
+  drums: "instrument",
+  keys: "instrument",
+  piano: "keys",
+  keyboard: "keys",
+};
+
+export const ARTIFACT_COLORS = {
+  audio: "#88a8c8",
+  midi: "#62b8e8",
+  json: "#8f9aa6",
+  text: "#b58bd8",
+};
+
+/**
+ * Resolve the visual color for an artifact semantic type. Colors are derived
+ * presentation metadata: they are never persisted in FlowDocument/FlowRun.
+ */
+export function semanticColor(semanticType, legacyName = null, artifactType = "audio") {
+  let current = semanticType || null;
+  const seen = new Set();
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    if (SEMANTIC_COLORS[current]) return SEMANTIC_COLORS[current];
+    current = SEMANTIC_PARENTS[current] || null;
+  }
+  if (legacyName === "other") return SEMANTIC_COLORS.unknown_audio;
+  if (legacyName === "original") return SEMANTIC_COLORS.mixture;
+  if (legacyName && SEMANTIC_COLORS[legacyName]) return SEMANTIC_COLORS[legacyName];
+  return ARTIFACT_COLORS[artifactType] || "#a0a0a0";
+}
+
+// Backward-compatible legacy stem-name lookup. New Flow code should prefer
+// semanticColor(semanticType, name, artifactType).
+export const STEM_COLORS = {
+  vocals: SEMANTIC_COLORS.vocals,
+  drums: SEMANTIC_COLORS.drums,
+  bass: SEMANTIC_COLORS.bass,
+  guitar: SEMANTIC_COLORS.guitar,
+  piano: SEMANTIC_COLORS.piano,
+  other: SEMANTIC_COLORS.unknown_audio,
+  original: SEMANTIC_COLORS.mixture,
+  lead_vocals: SEMANTIC_COLORS.lead_vocals,
+  backing_vocals: SEMANTIC_COLORS.backing_vocals,
 };
 
 export const PROGRESS_COLOR = "#3a3a3a";

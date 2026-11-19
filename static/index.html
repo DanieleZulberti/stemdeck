@@ -4,12 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StemDeck — split any track into stems</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/variables.css" />
     <link rel="stylesheet" href="/css/waves.css" />
     <link rel="stylesheet" href="/css/daw.css" />
+    <link rel="stylesheet" href="/css/flow-editor.css" />
   </head>
   <body>
 
@@ -265,6 +263,15 @@
           </button>
         </div>
 
+          <!-- Processing mode. Standard keeps the legacy stem pipeline; choosing
+               a Flow makes the same import bar feed the selected reusable Flow. -->
+          <div class="daw-flow-picker">
+            <select id="composerFlowSelect" aria-label="Processing flow">
+              <option value="">Standard extraction</option>
+            </select>
+            <button id="composerFlowEditBtn" type="button" title="Edit selected Flow" aria-label="Edit selected Flow" disabled>Edit</button>
+          </div>
+
           <!-- Process button -->
           <button id="submit" class="daw-process-btn" type="submit">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -308,6 +315,13 @@
             </button>
             <!-- Lyrics for the open track (#699): a view of the sidebar, like
                  Favorites and Trash, drawn by lyrics.js. -->
+            <button class="rail-btn rail-flows" id="flowsBtn" type="button" title="Flows" aria-label="Flows" aria-pressed="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/>
+                <path d="M8.5 6h7M7.5 8l3.2 7.5M16.5 8l-3.2 7.5"/>
+              </svg>
+              <span>Flows</span>
+            </button>
             <button class="rail-btn rail-lyrics" type="button" title="Lyrics" aria-label="Lyrics" aria-pressed="false" data-i18n-title="nav.lyrics" data-i18n-aria-label="nav.lyrics">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M4 6h11 M4 11h11 M4 16h6"/>
@@ -443,6 +457,67 @@
             </section>
           </div>
         </aside>
+
+        <!-- ── Flow Editor (M6) ── -->
+        <section id="flowEditorView" class="flow-editor-view" aria-label="Flow Editor">
+          <aside class="flow-browser">
+            <div class="flow-pane-head">
+              <div>
+                <div class="flow-kicker">Flows</div>
+                <strong>My Flows</strong>
+              </div>
+              <button id="flowNewBtn" class="flow-icon-btn" type="button" title="New flow" aria-label="New flow">+</button>
+            </div>
+            <div id="flowList" class="flow-list" role="list"></div>
+            <div class="flow-palette-head">Node palette</div>
+            <input id="flowPaletteSearch" class="flow-search" type="search" placeholder="Search nodes…" autocomplete="off" />
+            <div id="flowPalette" class="flow-palette"></div>
+          </aside>
+
+          <div class="flow-workspace">
+            <header class="flow-toolbar">
+              <div class="flow-title-wrap">
+                <strong id="flowEditorTitle">No flow selected</strong>
+                <span id="flowRevisionLabel" class="flow-muted"></span>
+              </div>
+              <div class="flow-status" aria-live="polite">
+                <span id="flowCompiledBadge" class="flow-badge">compile —</span>
+                <span id="flowValidBadge" class="flow-badge">valid —</span>
+                <span id="flowRunnableBadge" class="flow-badge">runnable —</span>
+              </div>
+              <div class="flow-toolbar-actions">
+                <button id="flowAddInputBtn" type="button">+ Input</button>
+                <button id="flowAddOutputBtn" type="button">+ Output</button>
+                <button id="flowAnalyzeBtn" type="button">Check</button>
+                <button id="flowRunBtn" type="button" disabled>Run</button>
+                <button id="flowApplyBtn" type="button" disabled>Apply to Studio</button>
+                <button id="flowSaveBtn" class="primary" type="button" disabled>Save</button>
+              </div>
+            </header>
+            <div id="flowCanvasScroller" class="flow-canvas-scroller">
+              <div id="flowCanvas" class="flow-canvas" tabindex="0" aria-label="Flow canvas">
+                <svg id="flowEdges" class="flow-edges" aria-hidden="true"></svg>
+                <div id="flowNodesLayer" class="flow-nodes-layer"></div>
+                <div id="flowCanvasEmpty" class="flow-canvas-empty">Create or select a flow, then drag nodes from the palette.</div>
+              </div>
+            </div>
+            <div id="flowConnectionHint" class="flow-connection-hint hidden"></div>
+          </div>
+
+          <aside class="flow-inspector">
+            <div class="flow-pane-head">
+              <div>
+                <div class="flow-kicker">Inspector</div>
+                <strong id="flowInspectorTitle">Flow</strong>
+              </div>
+            </div>
+            <div id="flowInspectorBody" class="flow-inspector-body"></div>
+            <div class="flow-run-head">Run</div>
+            <div id="flowRunPanel" class="flow-run-panel"></div>
+            <div class="flow-diagnostics-head">Diagnostics <span id="flowDiagnosticCount" class="flow-muted"></span></div>
+            <div id="flowDiagnostics" class="flow-diagnostics"></div>
+          </aside>
+        </section>
 
         <!-- ── Main area ── -->
         <div class="daw-main-col">

@@ -22,6 +22,8 @@ import { initFooterFit, refitFooter } from "./footerFit.js";
 import { initArtistInfo } from "./artistInfo.js";
 import { initLyrics } from "./lyrics.js";
 import { initHelpMode } from "./helpMode.js";
+import { initFlowEditor } from "./flowEditor.js";
+import { initComposerFlowPicker } from "./flowImport.js";
 
 // ─── Stem choice toggles on the import page ───
 //
@@ -420,6 +422,7 @@ const i18nReady = initI18n().then(() => applyTranslations(document));
 
 syncStemNamesFromAPI().then(() => buildStripStems());
 wireJobForm();
+initComposerFlowPicker();
 // Live search on the topbar box. Picking a result fills the box and stops
 // there: extraction is minutes of work, so it stays behind the deliberate
 // press of Process rather than starting on a click in a list the user may
@@ -458,6 +461,7 @@ initFooterFit();
 initArtistInfo();
 initLyrics();
 initHelpMode();
+initFlowEditor();
 // Re-measure after a language switch. Measured across en/fr/de/pl the strip
 // came out the same width in all four, because the group labels are 10px
 // uppercase and narrower than the controls under them, so this is not the

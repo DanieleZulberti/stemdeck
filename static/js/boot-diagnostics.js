@@ -115,6 +115,15 @@
   }
 
   function handle(event) {
+    const target = event.target;
+    // Optional resources (fonts, analytics, cosmetic assets, etc.) must never
+    // turn a healthy application into a fatal boot failure. Mark such elements
+    // with data-boot-optional when they are intentionally non-essential.
+    if (target && target !== window && target.dataset && "bootOptional" in target.dataset) {
+      console.warn("[boot] optional resource failed to load", target.src || target.href || target);
+      return;
+    }
+
     const detail = detailFrom(event);
     // Still log it. In a browser the console is the faster route, and this runs
     // before main.js installs its own logging.

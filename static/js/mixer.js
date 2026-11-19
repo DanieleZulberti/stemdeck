@@ -1,5 +1,5 @@
 import {
-  STEM_NAMES, TRACK_NAMES, EXTRA_STEM_NAMES, STEM_COLORS, STEM_DISPLAY, LANE_VOLUME_MAX,
+  STEM_NAMES, TRACK_NAMES, EXTRA_STEM_NAMES, STEM_COLORS, STEM_DISPLAY, LANE_VOLUME_MAX, semanticColor,
 } from "./constants.js";
 
 // Every lane name this session might ever need mixer state for, including
@@ -9,8 +9,15 @@ import {
 // (not a snapshot) because STEM_NAMES/EXTRA_STEM_NAMES are reassigned once
 // syncStemNamesFromAPI() resolves -- a const array here would freeze the
 // fallback values from before that happens.
+let dynamicTrackNames = [];
+
 function allTrackNames() {
-  return [...TRACK_NAMES, ...EXTRA_STEM_NAMES];
+  return [...new Set([...TRACK_NAMES, ...EXTRA_STEM_NAMES, ...dynamicTrackNames])];
+}
+
+export function setDynamicTrackNames(names = []) {
+  dynamicTrackNames = [...new Set((names || []).filter((name) => typeof name === "string" && name))];
+  ensureMixerStateDefaults();
 }
 import {
   mixerState, mixerEl, stemListEl, currentJobId, multitrack, trackIndex,
@@ -509,8 +516,8 @@ export function laneDragIcon(stemName) {
 
 export function renderMixerRow(stem) {
   const state = mixerState[stem.name];
-  const color = STEM_COLORS[stem.name] || "#a0a0a0";
-  const display = STEM_DISPLAY[stem.name] || stem.name;
+  const color = semanticColor(stem.semanticType || stem.semantic_type, stem.name, stem.artifactType || stem.artifact_type || "audio");
+  const display = stem.displayName || STEM_DISPLAY[stem.name] || stem.name;
 
   const row = document.createElement("div");
   row.className = "lane-header mx-row";

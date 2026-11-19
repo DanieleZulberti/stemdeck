@@ -1,0 +1,221 @@
+/* Flow Editor MVP. Kept isolated from the Studio styles so the editor can
+   evolve independently or be replaced without coupling graph UI to the DAW. */
+.flow-editor-view { display: none; flex: 1; min-width: 0; min-height: 0; background: var(--bg); }
+.daw.flow-mode .sidebar { width: var(--rail-w); }
+.daw.flow-mode .sidebar-body { opacity: 0; pointer-events: none; visibility: hidden; }
+.daw.flow-mode .daw-main-col { display: none; }
+.daw.flow-mode .flow-editor-view { display: flex; }
+.daw.flow-mode .rail-btn.active:not(.rail-flows) { color: var(--muted); background: none; }
+.daw.flow-mode .rail-flows { color: var(--accent); background: var(--panel); }
+
+.flow-browser, .flow-inspector { width: 250px; flex: 0 0 250px; background: var(--bg-2); min-height: 0; display: flex; flex-direction: column; }
+.flow-browser { border-right: 1px solid var(--border); }
+.flow-inspector { width: 310px; flex-basis: 310px; border-left: 1px solid var(--border); }
+.flow-pane-head { min-height: 58px; padding: 12px 14px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.flow-kicker, .flow-palette-head, .flow-diagnostics-head { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.flow-icon-btn { width:28px; height:28px; border:1px solid var(--border); background:var(--panel); color:var(--fg); border-radius:6px; cursor:pointer; font-size:18px; }
+.flow-list { max-height: 210px; overflow:auto; padding:8px; border-bottom:1px solid var(--border); }
+.flow-list-empty, .flow-palette-empty { padding:12px; color:var(--muted); font-size:12px; }
+.flow-list-item { width:100%; text-align:left; border:0; border-radius:6px; background:transparent; color:var(--fg-2); padding:8px 9px; cursor:pointer; display:flex; justify-content:space-between; gap:8px; }
+.flow-list-item:hover, .flow-list-item.active { background:var(--panel); color:var(--fg); }
+.flow-list-item small { color:var(--muted); font-family:var(--font-mono); }
+.flow-palette-head { padding:12px 12px 6px; }
+.flow-search { margin:0 10px 8px; background:var(--panel); border:1px solid var(--border); color:var(--fg); border-radius:6px; padding:7px 9px; }
+.flow-palette { overflow:auto; padding:0 8px 12px; }
+.flow-palette-category { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; padding:8px 4px 4px; }
+.flow-palette-node { border:1px solid var(--border); background:var(--panel); border-radius:7px; padding:8px; margin:5px 0; cursor:grab; }
+.flow-palette-node:hover { border-color:var(--border-strong); }
+.flow-palette-node strong { display:block; font-size:12px; }
+.flow-palette-node span { display:block; margin-top:3px; color:var(--muted); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.flow-palette-node.unavailable { opacity:.55; }
+
+.flow-workspace { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; position:relative; }
+.flow-toolbar { min-height:58px; flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:8px 12px; border-bottom:1px solid var(--border); background:var(--bg-2); }
+.flow-title-wrap { min-width:160px; display:flex; flex-direction:column; }
+.flow-muted { color:var(--muted); font-size:10px; }
+.flow-status { display:flex; gap:5px; margin-left:auto; }
+.flow-badge { font-size:10px; border:1px solid var(--border); border-radius:999px; color:var(--muted); padding:3px 7px; }
+.flow-badge.ok { color:#78d68b; border-color:rgba(120,214,139,.35); }
+.flow-badge.bad { color:#ff7d88; border-color:rgba(255,125,136,.35); }
+.flow-toolbar-actions { display:flex; gap:6px; }
+.flow-toolbar button, .flow-inspector button { border:1px solid var(--border); background:var(--panel); color:var(--fg-2); border-radius:6px; padding:6px 9px; cursor:pointer; }
+.flow-toolbar button:hover, .flow-inspector button:hover { border-color:var(--border-strong); color:var(--fg); }
+.flow-toolbar button.primary { background:var(--accent); color:#111; border-color:transparent; font-weight:700; }
+.flow-toolbar button:disabled { opacity:.45; cursor:default; }
+
+.flow-canvas-scroller { flex:1; min-height:0; overflow:auto; background-color:#0b0e11; background-image:radial-gradient(circle, rgba(255,255,255,.08) 1px, transparent 1px); background-size:20px 20px; }
+.flow-canvas { width:2400px; height:1600px; position:relative; }
+.flow-edges, .flow-nodes-layer { position:absolute; inset:0; width:100%; height:100%; }
+.flow-edges { pointer-events:none; overflow:visible; }
+.flow-edge { fill:none; stroke:#59636e; stroke-width:2.5; opacity:.9; }
+.flow-edge.pending { stroke:var(--accent); stroke-dasharray:5 5; }
+.flow-canvas-empty { position:absolute; top:44%; left:50%; transform:translate(-50%,-50%); color:var(--muted); font-size:12px; pointer-events:none; }
+
+.flow-node { position:absolute; width:210px; border:1px solid var(--border-strong); background:#151a1f; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.25); user-select:none; }
+.flow-node.selected { border-color:var(--accent); }
+.flow-node.virtual { width:175px; background:#101820; }
+.flow-node-head { padding:8px 10px; border-bottom:1px solid var(--border); cursor:move; display:flex; gap:6px; align-items:center; justify-content:space-between; }
+.flow-node-head strong { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.flow-node-type { color:var(--muted); font-size:9px; }
+.flow-node-ports { display:flex; flex-direction:column; padding:5px 0; }
+.flow-port { min-height:27px; display:flex; align-items:center; gap:6px; padding:4px 8px; font-size:10px; color:var(--fg-2); cursor:pointer; }
+.flow-port:hover { background:rgba(255,255,255,.04); }
+.flow-port.output { justify-content:flex-end; }
+.flow-port-dot { width:10px; height:10px; border-radius:50%; border:2px solid var(--flow-port-color, #77818b); background:#11161b; flex:0 0 auto; }
+.flow-port.output .flow-port-dot, .flow-port.source .flow-port-dot { border-color:var(--flow-port-color, var(--accent)); }
+.flow-port.connected .flow-port-dot { background:var(--flow-port-color, var(--accent)); }
+.flow-port-semantic { color:var(--muted); font-size:9px; }
+.flow-connection-hint { position:absolute; left:12px; bottom:12px; background:var(--panel-2); border:1px solid var(--border-strong); padding:7px 10px; border-radius:6px; font-size:11px; z-index:5; }
+
+.flow-inspector-body { padding:12px; overflow:auto; min-height:0; flex:1; }
+.flow-field { margin-bottom:12px; }
+.flow-field label { display:block; color:var(--muted); font-size:10px; margin-bottom:4px; }
+.flow-field input, .flow-field select, .flow-field textarea { width:100%; border:1px solid var(--border); background:var(--panel); color:var(--fg); border-radius:6px; padding:7px 8px; font:inherit; }
+.flow-field input[type="checkbox"] { width:auto; }
+.flow-field-help { color:var(--muted); font-size:9px; margin-top:3px; }
+.flow-inspector-actions { display:flex; flex-wrap:wrap; gap:6px; padding-top:6px; }
+.flow-inspector .danger { color:#ff7d88; }
+.flow-diagnostics-head { padding:10px 12px 6px; border-top:1px solid var(--border); }
+.flow-diagnostics { max-height:210px; overflow:auto; padding:0 8px 10px; }
+.flow-diagnostic { padding:7px 8px; margin:4px 0; border-left:2px solid var(--border-strong); background:rgba(255,255,255,.025); font-size:10px; }
+.flow-diagnostic.error { border-color:#ff6673; }
+.flow-diagnostic.warning { border-color:#e4b35f; }
+.flow-diagnostic-code { color:var(--muted); font-family:var(--font-mono); font-size:9px; }
+.flow-diagnostic-location { color:var(--accent); font-size:9px; }
+
+/* M7 Project/Studio binding controls. These remain inside the Flow workspace;
+   they persist application-layer bindings but do not leak Project concerns into
+   the graph document or execution runtime. */
+.flow-project-picker { display:flex; gap:6px; padding:0 10px 7px; }
+.flow-project-picker select { flex:1; min-width:0; border:1px solid var(--border); background:var(--panel); color:var(--fg); border-radius:6px; padding:6px 7px; }
+.flow-project-copy { margin:0 10px 4px; border:1px solid var(--border); background:var(--panel); color:var(--fg-2); border-radius:6px; padding:6px 8px; cursor:pointer; }
+.flow-project-copy:disabled { opacity:.45; cursor:default; }
+.flow-project-list { max-height:150px; }
+.flow-binding-list { max-height:150px; overflow:auto; padding:0 8px 8px; border-bottom:1px solid var(--border); }
+.flow-binding-item { padding:7px 8px; margin:3px 0; border:1px solid var(--border); border-radius:6px; background:var(--panel); font-size:10px; }
+.flow-binding-item .row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.flow-binding-item small { color:var(--muted); display:block; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.flow-binding-status { color:#78d68b; }
+.flow-binding-status.detached { color:var(--muted); }
+.flow-binding-item button { border:0; background:transparent; color:var(--muted); cursor:pointer; padding:0; font-size:10px; }
+.flow-binding-item button:hover { color:#ff7d88; }
+
+.flow-node.io-group { width:220px; }
+.flow-node.io-group .flow-port.selected-port { background:rgba(255,255,255,.07); box-shadow:inset 3px 0 0 var(--accent); }
+.flow-node.io-group .flow-port-semantic { margin-left:auto; }
+
+/* M9.3 Flow Run controls. Input bindings are editor-session state only: the
+   FlowDocument stays reusable and the immutable FlowRun snapshot captures the
+   concrete assets only when execution starts. */
+.flow-run-head { padding:10px 12px 6px; border-top:1px solid var(--border); font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.flow-run-panel { max-height:280px; overflow:auto; padding:0 10px 10px; }
+.flow-run-empty { color:var(--muted); font-size:10px; padding:4px 2px 8px; }
+.flow-run-input { margin-bottom:8px; }
+.flow-run-input label { display:block; font-size:10px; color:var(--fg-2); margin-bottom:4px; }
+.flow-run-input select { width:100%; min-width:0; border:1px solid var(--border); background:var(--panel); color:var(--fg); border-radius:6px; padding:6px 7px; }
+.flow-run-input-actions { display:flex; margin-top:5px; }
+.flow-upload-button { display:inline-flex; align-items:center; justify-content:center; width:100%; border:1px dashed var(--border); border-radius:6px; padding:6px 8px; color:var(--fg-2); cursor:pointer; font-size:10px; background:rgba(255,255,255,.02); }
+.flow-upload-button:hover { border-color:var(--accent); color:var(--fg); }
+.flow-upload-button.disabled { opacity:.55; cursor:default; }
+.flow-upload-button input { display:none; }
+.flow-run-summary { border:1px solid var(--border); border-radius:7px; background:var(--panel); padding:8px; margin-top:6px; }
+.flow-run-summary .row { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.flow-run-status { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+.flow-run-actions { display:flex; gap:6px; margin-top:7px; }
+.flow-run-actions button { flex:1; }
+.flow-node-run { margin-top:7px; padding-top:7px; border-top:1px solid var(--border); }
+.flow-node-run .row { font-size:10px; }
+.flow-node-run small { display:block; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.flow-run-progress { height:4px; background:rgba(255,255,255,.07); border-radius:999px; overflow:hidden; margin-top:4px; }
+.flow-run-progress > span { display:block; height:100%; background:var(--accent); width:0; }
+.flow-cache-hit { color:#78d68b; font-size:9px; }
+
+
+/* M9.4 Apply destination dialog */
+.flow-apply-dialog {
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid var(--line, #2b3842);
+  border-radius: 14px;
+  background: #11191f;
+  color: inherit;
+  padding: 0;
+}
+.flow-apply-dialog::backdrop { background: rgba(0,0,0,.6); }
+.flow-apply-form { display: grid; gap: 16px; padding: 22px; }
+.flow-apply-form h3 { margin: 0; }
+.flow-apply-form label, .flow-apply-form fieldset { display: grid; gap: 8px; }
+.flow-apply-form fieldset { border: 1px solid #2b3842; border-radius: 10px; padding: 12px; }
+.flow-apply-form fieldset label { display: flex; align-items: center; gap: 8px; }
+.flow-apply-form input[type="text"], .flow-apply-form input:not([type]), .flow-apply-form select { width: 100%; }
+.flow-apply-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.flow-apply-target.hidden { display: none; }
+
+/* M9.7 connection affordances. The small port is the actual connection
+   handle; rows remain selectable/editable independently. */
+.flow-port-dot {
+  appearance:none;
+  padding:0;
+  cursor:crosshair;
+  position:relative;
+  box-shadow:0 0 0 3px transparent;
+  transition:transform .1s ease, box-shadow .1s ease, background .1s ease;
+}
+.flow-port-dot:hover,
+.flow-port-dot:focus-visible {
+  transform:scale(1.35);
+  box-shadow:0 0 0 4px rgba(255,184,57,.16);
+  outline:none;
+}
+.flow-port-disconnect {
+  margin-left:auto;
+  width:18px;
+  height:18px;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  line-height:16px;
+  padding:0;
+}
+.flow-port-disconnect:hover { background:rgba(255,102,115,.15); color:#ff7d88; }
+.flow-canvas.connection-active .flow-port.input .flow-port-dot {
+  border-color:#78d68b;
+  box-shadow:0 0 0 4px rgba(120,214,139,.12);
+}
+.flow-canvas.connection-active [data-auto-output-target="true"] {
+  border-color:#78d68b;
+  box-shadow:0 0 0 2px rgba(120,214,139,.1), 0 8px 24px rgba(0,0,0,.25);
+}
+.flow-canvas.connection-active [data-auto-output-target="true"] .flow-port-empty {
+  color:#78d68b;
+}
+.flow-connection-hint { display:flex; align-items:center; gap:10px; }
+.flow-connection-hint button {
+  border:1px solid var(--border-strong);
+  background:transparent;
+  color:var(--fg-2);
+  border-radius:5px;
+  padding:3px 6px;
+  cursor:pointer;
+}
+
+/* M9.7 reusable Flow selection in the standard StemDeck import bar. */
+.daw-flow-picker { display:flex; gap:5px; align-items:center; min-width:150px; max-width:240px; }
+.daw-flow-picker select {
+  min-width:0; width:100%; border:1px solid var(--border); background:var(--panel);
+  color:var(--fg-2); border-radius:6px; padding:7px 8px; font:inherit; font-size:10px;
+}
+.daw-flow-picker button {
+  border:1px solid var(--border); background:var(--panel); color:var(--fg-2);
+  border-radius:6px; padding:7px 8px; cursor:pointer; font-size:10px;
+}
+.daw-flow-picker button:disabled { opacity:.4; cursor:default; }
+#job-form.flow-selected .daw-stem-section,
+#job-form.flow-selected .structure-toggle { opacity:.35; pointer-events:none; }
+
+/* M9.8 semantic coloring: port rows inherit the semantic source color without
+   persisting presentation metadata in the Flow document. */
+.flow-port { border-left:2px solid transparent; }
+.flow-port:hover { border-left-color:var(--flow-port-color, #77818b); }
+.flow-port.selected-port { border-left-color:var(--flow-port-color, var(--accent)); }

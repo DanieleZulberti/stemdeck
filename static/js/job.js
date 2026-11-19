@@ -13,6 +13,7 @@ import { initSections } from "./sections.js";
 import { importPlaylist, looksLikePlaylist } from "./playlist.js";
 import { t } from "./i18n.js";
 import { formatKey } from "./keyLabel.js";
+import { selectedComposerFlowId, runSelectedFlowImport } from "./flowImport.js";
 
 // Playful stage label rotation (Claude-Code-style flair). The backend
 // emits truthful stage strings; we surface them in the small #job-detail
@@ -106,7 +107,7 @@ function setSubmitProcessing(processing) {
   // was emptied while the upload ran: an empty stems list is read by the
   // server as every stem. refreshStemChoiceVisuals applies the same two
   // conditions from the other side.
-  submitBtn.disabled = processing || selectedStems.size === 0;
+  submitBtn.disabled = processing || (!selectedComposerFlowId() && selectedStems.size === 0);
   submitBtn.classList.toggle("loading", processing);
   document.querySelector(".strip-sq-process")?.classList.toggle("loading", processing);
   const label = submitBtn.querySelector("span");
@@ -116,7 +117,7 @@ function setSubmitProcessing(processing) {
   // first submit of a session renamed the button for good, on success as much
   // as on failure, and nothing put it back short of a reload or a language
   // switch (#635).
-  if (label) label.textContent = processing ? t("job.processing") : t("process.extractStems");
+  if (label) label.textContent = processing ? t("job.processing") : (selectedComposerFlowId() ? "Run flow" : t("process.extractStems"));
 }
 
 function pickPhrase(status) {
@@ -738,6 +739,7 @@ export async function importFromUrl(url, { title, stems } = {}) {
 
 export function wireJobForm() {
   jobCancelBtn.addEventListener("click", cancelCurrentJob);
+  window.addEventListener("stemdeck:composer-flow-changed", () => setSubmitProcessing(false));
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -757,6 +759,23 @@ export function wireJobForm() {
     // Prefer _file cache: browsers (WKWebView, Chromium) silently clear
     // fileInput.files after a fetch() submission, breaking re-submits.
     const file = fileInput?._file ?? fileInput?.files?.[0] ?? null;
+
+    // M9.7: the standard import bar can feed a reusable Flow directly. This
+    // path is intentionally limited to one local file + one-input Flow; graphs
+    // with multiple inputs stay in the dedicated Flow Run panel where each
+    // binding is explicit.
+    if (selectedComposerFlowId()) {
+      try {
+        await runSelectedFlowImport(file);
+        fileInput?._clear?.();
+        urlInput.value = "";
+      } catch (err) {
+        showError(err.message || String(err), null, { retry:false });
+      } finally {
+        setSubmitProcessing(false);
+      }
+      return;
+    }
 
     // A playlist is its own flow: expand, confirm the count, then queue every
     // track into a folder named after it. Nothing takes the studio.

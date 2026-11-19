@@ -8,7 +8,7 @@ import { showPlaybackError, clearPlaybackError, resolvePlaybackSuccess } from ".
 import {
   STEM_NAMES, TRACK_NAMES, EXTRA_STEM_NAMES, STEM_COLORS, PROGRESS_COLOR,
   LOOP_DEFAULT_START_FRAC, LOOP_DEFAULT_END_FRAC, LANE_VOLUME_MAX,
-  effectiveStemOrder,
+  effectiveStemOrder, semanticColor,
 } from "./constants.js";
 import {
   mixerEl, multitrackContainer, bpmChip, keyChip, stemsChip, timeEl,
@@ -41,7 +41,7 @@ import {
   loadMixIntoState, resetMixerState, refreshMixerVisuals,
   setLaneControlsEnabled, ensureMixerStateDefaults, applyMix,
   renderRealMiniWave, renderRealMiniWaveFromPeaks, renderMixerRow,
-  applyAllLanePitches, setLaneKeysAvailable,
+  applyAllLanePitches, setLaneKeysAvailable, setDynamicTrackNames,
 } from "./mixer.js";
 import {
   buildRuler, updatePlayheadMarker, updateLoopRegionVisual,
@@ -462,6 +462,7 @@ function addLaneDragNugget(row, stemName) {
 // aligned even when only a subset of stems was extracted. Swaps "vocals" for
 // lead_vocals + backing_vocals when this job's on-demand split (#275) ran.
 function overviewLaneNames(stems) {
+  if (_managedFlowMixerActive) return stems.map((stem) => stem.name);
   const present = new Set(stems.map((s) => s.name));
   const order = effectiveStemOrder(present);
   return present.has("original") ? ["original", ...order] : order;
@@ -500,9 +501,12 @@ function renderAllOverviewWaveformsFromPeaks(stems, peaksData) {
   }
   const norm = globalMax > 0 ? 1 / globalMax : 0;
   const bars = overviewBarCount();
+  const stemMeta = Object.fromEntries(stems.map((stem) => [stem.name, stem]));
   laneNames.forEach((name, i) => {
     const pts = present.has(name) ? peaksData[name] : null;
-    renderOverviewWaveformPath(name, pts, norm, STEM_COLORS[name] || "#a0a0a0", bars, i);
+    const stem = stemMeta[name];
+    const color = semanticColor(stem?.semanticType || stem?.semantic_type, name, stem?.artifactType || stem?.artifact_type || "audio");
+    renderOverviewWaveformPath(name, pts, norm, color, bars, i);
   });
 }
 
@@ -963,7 +967,7 @@ function renderAllMiniWaves(mt, stems) {
     if (i === undefined) return;
     const ws = wsArr[i];
     if (!ws) return;
-    const color = STEM_COLORS[stem.name] || "#a0a0a0";
+    const color = semanticColor(stem.semanticType || stem.semantic_type, stem.name, stem.artifactType || stem.artifact_type || "audio");
     const tryRender = () => {
       const buf = ws.getDecodedData?.();
       if (isAudioBufferLike(buf)) {
@@ -1078,8 +1082,35 @@ function _applyLaneHeight(count) {
   return rowH - WAVEFORM_SEPARATOR_HEIGHT;
 }
 
-export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, title = "", peaksPromise = null, hasVideo = false, videoStatus = null) {
+let _managedFlowMixerActive = false;
+
+function renderMixerRowsForManagedFlow(stems) {
+  mixerEl.innerHTML = "";
+  for (const stem of stems) mixerEl.appendChild(renderMixerRow(stem).row);
+  _managedFlowMixerActive = true;
+}
+
+function renderMixerRowsForFlowAugmented(stems) {
+  mixerEl.innerHTML = "";
+  for (const stem of stems) mixerEl.appendChild(renderMixerRow(stem).row);
+  _managedFlowMixerActive = true;
+}
+
+function restoreLegacyMixerRowsIfNeeded() {
+  if (!_managedFlowMixerActive) return;
+  mixerEl.innerHTML = "";
+  for (const name of ["original", ...STEM_NAMES, ...EXTRA_STEM_NAMES]) {
+    mixerEl.appendChild(renderMixerRow({ name, url:"#" }).row);
+  }
+  _managedFlowMixerActive = false;
+}
+
+export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, title = "", peaksPromise = null, hasVideo = false, videoStatus = null, managedFlow = false, flowAugmented = false) {
   const rawStems = stems.filter((stem) => stem?.name && stem?.url);
+  setDynamicTrackNames((managedFlow || flowAugmented) ? rawStems.map((stem) => stem.name) : []);
+  if (managedFlow) renderMixerRowsForManagedFlow(rawStems);
+  else if (flowAugmented) renderMixerRowsForFlowAugmented(rawStems);
+  else restoreLegacyMixerRowsIfNeeded();
   const app = document.querySelector(".app");
   app?.classList.remove("is-import");
   app?.classList.remove("no-track");
@@ -1145,15 +1176,17 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   // job's on-demand split has produced both, show those two in place of the
   // plain Vocals lane rather than all three -- vocals.wav is never deleted by
   // the split, so it would otherwise still show up here too.
-  const rawPresent = new Set(stems.map((s) => s.name));
-  const splitDone = rawPresent.has("lead_vocals") && rawPresent.has("backing_vocals");
-  const wantsVocals = selectedStems.has("vocals");
-  stems = stems.filter((s) => {
-    if (s.name === "original") return true;
-    if (s.name === "vocals") return wantsVocals && !splitDone;
-    if (s.name === "lead_vocals" || s.name === "backing_vocals") return wantsVocals && splitDone;
-    return selectedStems.has(s.name);
-  });
+  if (!managedFlow && !flowAugmented) {
+    const rawPresent = new Set(stems.map((s) => s.name));
+    const splitDone = rawPresent.has("lead_vocals") && rawPresent.has("backing_vocals");
+    const wantsVocals = selectedStems.has("vocals");
+    stems = stems.filter((s) => {
+      if (s.name === "original") return true;
+      if (s.name === "vocals") return wantsVocals && !splitDone;
+      if (s.name === "lead_vocals" || s.name === "backing_vocals") return wantsVocals && splitDone;
+      return selectedStems.has(s.name);
+    });
+  }
   const playbackStems = buildPlaybackStems(rawStems, stems, STEM_NAMES);
   const fullDecodeStems = addVisualOnlyStems(playbackStems, stems);
   _currentStems = stems;
@@ -1165,7 +1198,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   // "failed" is the only status worth showing. "unavailable" means the source
   // genuinely has no video stream, which is not a fault and not news (#436).
   exportWrap?.classList.toggle("video-failed", videoStatus === "failed");
-  applyStemSelectionFilter(new Set(stems.map((s) => s.name)));
+  if (!managedFlow && !flowAugmented) applyStemSelectionFilter(new Set(stems.map((s) => s.name)));
   updateFooterTrack({ thumbnail, stemCount: stems.filter((s) => s.name !== "original").length });
 
   // Reset footer waveform state — will be re-populated below after peaks fetch.
@@ -1195,7 +1228,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   // Beat grid for the click track. Fetched alongside peaks; a 404 is the
   // normal answer for jobs separated before the beat-grid stage existed, and
   // simply leaves the click control disabled.
-  const _beatsPromise = jobId
+  const _beatsPromise = jobId && !managedFlow
     ? (() => {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), 5000);
@@ -1237,7 +1270,11 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   // mixer lanes stay aligned -- lead_vocals/backing_vocals in place of vocals
   // when this job's on-demand split (#275) produced them.
   const stemsByName = Object.fromEntries(stems.map((s) => [s.name, s]));
-  const order = effectiveStemOrder(new Set(stems.map((s) => s.name)));
+  const order = managedFlow
+    ? stems.map((stem) => stem.name).filter((name) => name !== "original")
+    : flowAugmented
+      ? stems.map((stem) => stem.name).filter((name) => name !== "original")
+      : effectiveStemOrder(new Set(stems.map((s) => s.name)));
   const orderedNames = [...(stemsByName["original"] ? ["original"] : []), ...order];
   setTrackIndex(Object.fromEntries(orderedNames.map((name, i) => [name, i])));
   multitrackContainer.innerHTML = "";
@@ -1277,7 +1314,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
       startPosition: 0,
       volume: stemsByName[name] ? 1 : 0,
       options: {
-        waveColor: STEM_COLORS[name] || "#a0a0a0",
+        waveColor: semanticColor(stemsByName[name]?.semanticType || stemsByName[name]?.semantic_type, name, stemsByName[name]?.artifactType || stemsByName[name]?.artifact_type || "audio"),
         progressColor: PROGRESS_COLOR,
         height: laneH,
         barWidth: 3,
@@ -1596,7 +1633,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
               for (const stem of stems) {
                 const pts = p[stem.name];
                 if (pts?.length) {
-                  renderRealMiniWaveFromPeaks(stem.name, pts, STEM_COLORS[stem.name] || "#a0a0a0");
+                  renderRealMiniWaveFromPeaks(stem.name, pts, semanticColor(stem.semanticType || stem.semantic_type, stem.name, stem.artifactType || stem.artifact_type || "audio"));
                 }
               }
               renderStemEnergyBaselineFromPeaks(stems, p);
@@ -1615,7 +1652,7 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
             for (const stem of stems) {
               const buf = decoded.get(stem.name);
               if (isAudioBufferLike(buf)) {
-                renderDecodedStemVisuals(stem.name, buf, STEM_COLORS[stem.name] || "#a0a0a0");
+                renderDecodedStemVisuals(stem.name, buf, semanticColor(stem.semanticType || stem.semantic_type, stem.name, stem.artifactType || stem.artifact_type || "audio"));
               }
             }
           }

@@ -524,6 +524,16 @@ export function addTrackToLibrary(track) {
     dismissFailuresByJobId(existingId);
   }
   const existing = tracks[track.id] || {};
+  // Flow-managed Studio sessions use stable ids so reruns can update the same
+  // library entry. If an older incarnation of that same session was moved to
+  // Trash, a fresh successful materialization must make it visible again.
+  // Normal Job imports keep their existing "Trash is user-owned" semantics.
+  if (track.flowManaged === true) {
+    const trash = getTrashFolder();
+    if (trash?.items.includes(track.id)) {
+      trash.items = trash.items.filter((id) => id !== track.id);
+    }
+  }
   tracks[track.id] = {
     ...existing,
     ...track,
@@ -536,7 +546,7 @@ export function addTrackToLibrary(track) {
     createdAt: existing.createdAt ?? track.createdAt ?? (Date.now() / 1000),
     favorite: existing.favorite ?? false,
   };
-  const alreadyPlaced = folders.some((folder) => folder.items.includes(track.id));
+  const alreadyPlaced = folders.some((folder) => folder.id !== TRASH_ID && folder.items.includes(track.id));
   if (!alreadyPlaced) {
     // Put into first non-trash folder or create an "Unsorted" folder.
     let target = folders.find((folder) => folder.id !== TRASH_ID);
@@ -550,6 +560,30 @@ export function addTrackToLibrary(track) {
   render();
 }
 
+
+export function applyFlowOverlayToTrack(trackId, overlay) {
+  const track = tracks[trackId];
+  if (!track || !overlay?.overlayId) return false;
+  const overlays = { ...(track.flowOverlays || {}) };
+  overlays[overlay.overlayId] = { ...overlay, audioStems: Array.isArray(overlay.audioStems) ? overlay.audioStems : [] };
+  track.flowOverlays = overlays;
+  saveState();
+  render();
+  return true;
+}
+
+function mergedAudioStemsWithFlowOverlays(baseStems, track) {
+  const base = Array.isArray(baseStems) ? [...baseStems] : [];
+  const overlays = Object.values(track?.flowOverlays || {});
+  for (const overlay of overlays) {
+    for (const stem of overlay.audioStems || []) {
+      const key = stem.flowOutputId || stem.name;
+      const idx = base.findIndex((item) => (item.flowOutputId || item.name) === key);
+      if (idx >= 0) base[idx] = stem; else base.push(stem);
+    }
+  }
+  return base;
+}
 /**
  * The open track, for the lyrics panel: its id, title and length in seconds,
  * or null when none is open.
@@ -747,7 +781,7 @@ function stateMetadataToTrack(state, fallbackTrack) {
     thumb: state.thumbnail || fallbackTrack.thumb,
     stems: state.selected_stems || fallbackTrack.stems,
     selectedStems: state.selected_stems || fallbackTrack.selectedStems,
-    audioStems: state.stems || fallbackTrack.audioStems || [],
+    audioStems: mergedAudioStemsWithFlowOverlays(state.stems || fallbackTrack.audioStems || [], fallbackTrack),
     duration: state.duration || fallbackTrack.duration,
     status: state.status || fallbackTrack.status,
     bpm: state.bpm ?? fallbackTrack.bpm,
@@ -973,6 +1007,9 @@ function applyTrackInfoToPanel(track) {
  * catches anything that did not land.
  */
 function syncTrashToServer(trackId, trashed) {
+  // Project Flow Studio sessions are not legacy processing Jobs. Their trash
+  // state remains local to the catalog and must never be mirrored to /api/jobs.
+  if (tracks[trackId]?.flowManaged) return Promise.resolve();
   const action = trashed ? "trash" : "restore";
   return fetch(`/api/jobs/${encodeURIComponent(trackId)}/${action}`, { method: "POST" })
     .catch((e) => console.warn(`[catalog] could not ${action} ${trackId} on the server`, e));
@@ -987,6 +1024,8 @@ function syncTrashToServer(trackId, trashed) {
  * same reason as the Trash: a heart must answer at once.
  */
 function syncFavoriteToServer(trackId, favorite) {
+  // Managed Flow sessions have Project/Studio bindings, not a Job registry row.
+  if (tracks[trackId]?.flowManaged) return;
   fetch(`/api/jobs/${encodeURIComponent(trackId)}/favorite`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -1077,7 +1116,7 @@ function reimportUnavailableTrack(trackId, track) {
   showError(i18nT("track.audioUnavailableError"));
 }
 
-async function loadTrackIntoStudio(trackId) {
+export async function loadTrackIntoStudio(trackId) {
   let track = tracks[trackId];
   if (!track) return;
   if (track.status === "unavailable") {
@@ -1090,19 +1129,23 @@ async function loadTrackIntoStudio(trackId) {
   // is about to load here).
   if (trackId !== foregroundJobId) detachForegroundJob();
   const hadStoredAudio = Boolean(track.audioStems?.length);
+  const managedFlow = track.flowManaged === true;
+  const flowAugmented = !managedFlow && Object.keys(track.flowOverlays || {}).length > 0;
   const token = ++_loadTrackToken;
 
   // Start peaks fetch immediately — runs in parallel with job-data fetch so it
   // resolves before wireUpAudio calls Multitrack.create. This prevents peaks.json
   // from competing with stem WAV fetches for Safari's 6-connection-per-origin limit.
   // /peaks rather than stems/peaks.json: see get_peaks in app/api/stems.py.
-  const peaksPromise = fetch(`/api/jobs/${trackId}/peaks`)
-    .then((r) => (r.ok ? r.json() : {}))
-    .catch(() => ({}));
+  const peaksPromise = (managedFlow || flowAugmented)
+    ? Promise.resolve({})
+    : fetch(`/api/jobs/${trackId}/peaks`)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}));
 
-  // Always fetch fresh state so server-side changes (sections, analysis, stems)
-  // are reflected — cached localStorage data can be stale.
-  try {
+  // Legacy Job tracks refresh from the Job API. Managed Flow sessions are
+  // Project application state and their media URLs come from Studio bindings.
+  if (!managedFlow) try {
     const res = await fetch(`/api/jobs/${trackId}`);
     if (token !== _loadTrackToken) return;
     if (res.ok) {
@@ -1131,7 +1174,7 @@ async function loadTrackIntoStudio(trackId) {
   if (PROCESSING_STATUSES.has(track.status)) return;
   if (!track.audioStems?.length) return;
   if (track.status !== "done" && !hadStoredAudio) return;
-  applyStoredStemSelection(track);
+  if (!managedFlow) applyStoredStemSelection(track);
   setCurrentTrack(trackId);
 
   // The composer is an input the Extract stems button submits, not a caption for
@@ -1150,7 +1193,7 @@ async function loadTrackIntoStudio(trackId) {
   // button imports it again, which is what re-splitting one has always meant.
   // An upload has no URL, so the button acts on the track itself and the
   // server separates the source it kept beside it.
-  const resplittable = !importable && track.status === "done";
+  const resplittable = !managedFlow && !importable && track.status === "done";
   const urlInput = document.getElementById("url");
   if (urlInput) {
     urlInput.value = importable ? track.sourceUrl : "";
@@ -1165,14 +1208,17 @@ async function loadTrackIntoStudio(trackId) {
   setResplitTarget(resplittable ? track : null);
 
   applyTrackInfoToPanel(track);
-  wireUpAudio(trackId, track.audioStems, track.duration || 0, track.thumb, track.mixUrl ?? null, track.title || "", peaksPromise, track.hasVideo ?? false, track.videoStatus ?? null);
-  initSections(trackId, track.sections, track.duration || 0);
-  // Not awaited: the track is already loading, and the answer arrives as a
-  // "tracktags" event.
-  backfillAudioTags(trackId);
-  // For artistInfo.js, which finds the band from the file's tags. An event
-  // rather than an import, since that module already imports this one.
-  document.dispatchEvent(new CustomEvent("trackopen", { detail: { id: trackId } }));
+  wireUpAudio(trackId, track.audioStems, track.duration || 0, track.thumb, track.mixUrl ?? null, track.title || "", peaksPromise, track.hasVideo ?? false, track.videoStatus ?? null, managedFlow, flowAugmented);
+  if (!managedFlow) {
+    initSections(trackId, track.sections, track.duration || 0);
+    // Not awaited: the track is already loading, and the answer arrives as a
+    // "tracktags" event.
+    backfillAudioTags(trackId);
+    // For artistInfo.js, which finds the band from the file's tags.
+    document.dispatchEvent(new CustomEvent("trackopen", { detail: { id: trackId } }));
+  } else {
+    initSections(trackId, [], track.duration || 0);
+  }
 }
 
 /**
@@ -2839,9 +2885,11 @@ function wireCatalogRailViews() {
     try {
       const trash = getTrashFolder();
       const toDelete = [...(trash?.items || [])];
-      // Awaited: the tombstone has to be on disk before the tracks leave the
-      // local index, or a reload re-imports them (#521).
-      await markJobsDeleted(toDelete);
+      const managedFlowIds = new Set(toDelete.filter((id) => tracks[id]?.flowManaged));
+      const legacyJobIds = toDelete.filter((id) => !managedFlowIds.has(id));
+      // Only legacy Job-backed tracks need deletion tombstones. Project Flow
+      // sessions are catalog projections of persistent Studio bindings.
+      await markJobsDeleted(legacyJobIds);
       purgeTrash();
       saveState();
       render();
@@ -2852,6 +2900,7 @@ function wireCatalogRailViews() {
       // came back the next time the registry was read from disk.
       const failed = [];
       for (const id of toDelete) {
+        if (managedFlowIds.has(id)) continue;
         try {
           const res = await fetch(`/api/jobs/${id}`, { method: "DELETE" });
           if (!res.ok && res.status !== 404) failed.push(id);
@@ -3709,6 +3758,9 @@ function reconcileAvailability(jobs) {
   const serverStatus = new Map(jobs.map((j) => [j.job_id, j.status]));
   const trashIds = new Set(getTrashFolder()?.items || []);
   for (const [id, t] of Object.entries(tracks)) {
+    // Flow-managed Studio sessions are backed by Project bindings rather than
+    // /api/jobs, so absence from the Job registry says nothing about media availability.
+    if (t.flowManaged) continue;
     if (trashIds.has(id)) continue;
     if (t.status !== "done" && t.status !== "unavailable") continue;
     if (serverIds.has(id)) t.status = serverStatus.get(id) === "unavailable" ? "unavailable" : "done";
