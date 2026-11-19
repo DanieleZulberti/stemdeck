@@ -12,6 +12,7 @@ class AudioArtifact:
     path: Path
     semantic_type: str
     sha256: str
+    artifact_type: str = "audio"
     producer: str | None = None
     producer_port: str | None = None
     sample_rate: int | None = None

@@ -1,22 +1,31 @@
 from __future__ import annotations
 
-from .schema import ModelDefinition
+from .schema import NodeDefinition
 
 
-class ModelRegistry:
+class NodeDefinitionRegistry:
+    """Registry of static node-type contracts exposed by the backend."""
+
     def __init__(self) -> None:
-        self._models: dict[str, ModelDefinition] = {}
+        self._definitions: dict[str, NodeDefinition] = {}
 
-    def register(self, definition: ModelDefinition) -> None:
-        if definition.id in self._models:
-            raise ValueError(f"Model '{definition.id}' already registered")
-        self._models[definition.id] = definition
+    def register(self, definition: NodeDefinition) -> None:
+        if definition.id in self._definitions:
+            raise ValueError(f"Node definition '{definition.id}' already registered")
+        self._definitions[definition.id] = definition
 
-    def get(self, model_id: str) -> ModelDefinition:
+    def get(self, definition_id: str) -> NodeDefinition:
         try:
-            return self._models[model_id]
+            return self._definitions[definition_id]
         except KeyError as exc:
-            raise KeyError(f"Model '{model_id}' is not registered") from exc
+            raise KeyError(f"Node definition '{definition_id}' is not registered") from exc
 
-    def __contains__(self, model_id: str) -> bool:
-        return model_id in self._models
+    def all(self) -> tuple[NodeDefinition, ...]:
+        return tuple(self._definitions.values())
+
+    def __contains__(self, definition_id: str) -> bool:
+        return definition_id in self._definitions
+
+
+# Compatibility name used by the current PoC and adapters.
+ModelRegistry = NodeDefinitionRegistry

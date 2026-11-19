@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shutil
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -9,6 +11,7 @@ from typing import Any
 from app.core.config import DEMUCS_MODEL, MODELS_DIR, VOCAL_SPLIT_MODEL
 from app.core.model_cache import vocal_split_artifacts
 from app.core.models import Job
+from app.core.registry import get_proc
 from app.core.settings import get_demucs_device, get_separation_quality
 from app.pipeline.separate import separate
 from app.pipeline.vocal_split import split_vocals
@@ -21,6 +24,7 @@ from .adapters import (
 )
 from .provenance import model_artifact
 from .schema import ModelDefinition
+from .scheduler import ResourceClaim
 
 
 def _demucs_remote_checkpoints() -> list[tuple[Path, str]]:
@@ -72,11 +76,44 @@ def _check_remote_url(url: str) -> str | None:
         return str(exc)
 
 
-def _job_from_context(context: dict[str, Any]) -> Job:
-    job = context.get("job")
-    if not isinstance(job, Job):
-        raise AdapterError("StemDeck-native adapters require a Job in execution context")
-    return job
+def _job_for_request(request: AdapterExecutionRequest) -> Job:
+    """Return a legacy Job bridge without making Job part of the Flow domain."""
+    job = request.context.get("job")
+    if isinstance(job, Job):
+        return job
+    return Job(id=f"flow-{request.node_id}")
+
+
+def _start_cancellation_bridge(
+    request: AdapterExecutionRequest, job: Job
+) -> tuple[threading.Event, threading.Thread | None]:
+    """Translate graph cancellation to the legacy Job/process mechanism."""
+    if request.cancellation_requested is None:
+        return threading.Event(), None
+    done = threading.Event()
+
+    def watch() -> None:
+        while not done.wait(0.1):
+            if not request.cancellation_requested():
+                continue
+            job.cancel_requested = True
+            proc = get_proc(job.id)
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+            return
+
+    thread = threading.Thread(target=watch, daemon=True, name=f"flow-cancel-{request.node_id}")
+    thread.start()
+    return done, thread
+
+
+def _stop_cancellation_bridge(done: threading.Event, thread: threading.Thread | None) -> None:
+    done.set()
+    if thread is not None:
+        thread.join(timeout=1)
 
 
 class StemDeckDemucsAdapter(ModelAdapter):
@@ -156,6 +193,10 @@ class StemDeckDemucsAdapter(ModelAdapter):
             "device": get_demucs_device(),
         }
 
+    def resource_claim(self, model, parameters, context) -> ResourceClaim:
+        # StemDeck's persistent Demucs worker is a process-global singleton.
+        return ResourceClaim("stemdeck-demucs-worker", 1)
+
     def execute(self, request: AdapterExecutionRequest) -> dict[str, Path]:
         if set(request.inputs) != {"audio"}:
             raise AdapterError("StemDeck Demucs adapter expects exactly one 'audio' input")
@@ -165,7 +206,8 @@ class StemDeckDemucsAdapter(ModelAdapter):
                 "and accepts no node params"
             )
 
-        job = _job_from_context(request.context)
+        job = _job_for_request(request)
+        cancel_done, cancel_thread = _start_cancellation_bridge(request, job)
         scratch = request.output_dir.parent / "work"
         scratch.mkdir(parents=True, exist_ok=True)
         try:
@@ -185,6 +227,7 @@ class StemDeckDemucsAdapter(ModelAdapter):
                 outputs[port] = target
             return outputs
         finally:
+            _stop_cancellation_bridge(cancel_done, cancel_thread)
             shutil.rmtree(scratch, ignore_errors=True)
 
 
@@ -234,6 +277,9 @@ class StemDeckVocalSplitAdapter(ModelAdapter):
             "device": get_demucs_device(),
         }
 
+    def resource_claim(self, model, parameters, context) -> ResourceClaim:
+        return ResourceClaim("accelerator-heavy", 1)
+
     def execute(self, request: AdapterExecutionRequest) -> dict[str, Path]:
         if set(request.inputs) != {"audio"}:
             raise AdapterError("StemDeck vocal split adapter expects exactly one 'audio' input")
@@ -242,7 +288,8 @@ class StemDeckVocalSplitAdapter(ModelAdapter):
                 "StemDeck vocal split adapter currently accepts no per-node parameters"
             )
 
-        job = _job_from_context(request.context)
+        job = _job_for_request(request)
+        cancel_done, cancel_thread = _start_cancellation_bridge(request, job)
         scratch = request.output_dir.parent / "work"
         scratch.mkdir(parents=True, exist_ok=True)
         vocals_path = scratch / "vocals.wav"
@@ -267,4 +314,5 @@ class StemDeckVocalSplitAdapter(ModelAdapter):
                 outputs[port] = target
             return outputs
         finally:
+            _stop_cancellation_bridge(cancel_done, cancel_thread)
             shutil.rmtree(scratch, ignore_errors=True)

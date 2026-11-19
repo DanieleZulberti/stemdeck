@@ -8,9 +8,11 @@ from typing import Any, Callable
 
 from .artifacts import AudioArtifact
 from .schema import ModelDefinition
+from .scheduler import ResourceClaim
 from .provenance import model_artifact
 
 ProgressCallback = Callable[[float | None, str], None]
+CancellationCheck = Callable[[], bool]
 
 
 class AdapterError(RuntimeError):
@@ -32,6 +34,7 @@ class AdapterExecutionRequest:
     output_dir: Path
     progress: ProgressCallback | None = None
     context: dict[str, Any] = field(default_factory=dict)
+    cancellation_requested: CancellationCheck | None = None
 
 
 class ModelAdapter(ABC):
@@ -61,6 +64,15 @@ class ModelAdapter(ABC):
     ) -> dict[str, Any]:
         """Return runtime facts that affect reproducibility/cache identity."""
         return {}
+
+    def resource_claim(
+        self,
+        model: ModelDefinition,
+        parameters: dict[str, Any],
+        context: dict[str, Any],
+    ) -> ResourceClaim:
+        """Return the runtime resource group used to limit concurrent nodes."""
+        return ResourceClaim("default", 1)
 
     @abstractmethod
     def execute(self, request: AdapterExecutionRequest) -> dict[str, Path]:
@@ -97,6 +109,9 @@ class MockAdapter(ModelAdapter):
 
     def available(self) -> tuple[bool, str | None]:
         return True, None
+
+    def resource_claim(self, model, parameters, context) -> ResourceClaim:
+        return ResourceClaim("mock-cpu", 32)
 
     def execute(self, request: AdapterExecutionRequest) -> dict[str, Path]:
         if not request.inputs:

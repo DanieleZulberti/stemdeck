@@ -90,3 +90,10 @@ Thumbs.db
 
 # Imported design references (kept local, not shipped)
 design/
+
+# Flow Engine runtime data
+flow-cache/
+flow-runs/
+flow-engine.sqlite3
+flow-engine.sqlite3-shm
+flow-engine.sqlite3-wal

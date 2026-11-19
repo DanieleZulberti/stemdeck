@@ -3,16 +3,36 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .diagnostics import Diagnostic, DiagnosticSeverity, DiagnosticSource
 from .registry import ModelRegistry
 from .schema import FlowDefinition, SemanticValidationMode
 from .semantic_types import is_semantically_compatible, resolve_semantic_type
 
 
-@dataclass
-class ValidationIssue:
-    level: str
-    code: str
-    message: str
+class ValidationIssue(Diagnostic):
+    """Validation diagnostic with the legacy constructor kept for PoC callers."""
+
+    def __init__(
+        self,
+        level: str,
+        code: str,
+        message: str,
+        *,
+        node_id: str | None = None,
+        port_id: str | None = None,
+        output_id: str | None = None,
+        parameter_id: str | None = None,
+    ) -> None:
+        super().__init__(
+            source=DiagnosticSource.VALIDATOR,
+            severity=DiagnosticSeverity(level),
+            code=code,
+            message=message,
+            node_id=node_id,
+            port_id=port_id,
+            output_id=output_id,
+            parameter_id=parameter_id,
+        )
 
 
 @dataclass
@@ -60,10 +80,11 @@ class FlowValidator:
                         "error",
                         "unknown_semantic_type",
                         f"Input '{input_name}': {exc}",
+                        port_id=input_name,
                     )
                 )
 
-        for node in flow.nodes.values():
+        for node_id, node in flow.nodes.items():
             if node.model not in self.registry:
                 continue
             model = self.registry.get(node.model)
@@ -76,6 +97,8 @@ class FlowValidator:
                             "error",
                             "unknown_semantic_type",
                             f"Model '{node.model}' port '{port_name}': {exc}",
+                            node_id=node_id,
+                            port_id=port_name,
                         )
                     )
 
@@ -87,6 +110,7 @@ class FlowValidator:
                         "error",
                         "unknown_model",
                         f"Node '{node_name}' references unknown model '{node.model}'",
+                        node_id=node_name,
                     )
                 )
 
@@ -98,7 +122,7 @@ class FlowValidator:
         if owner == "inputs":
             if port not in flow.inputs:
                 return None
-            return "audio", flow.inputs[port].semantic_type
+            return flow.inputs[port].type, flow.inputs[port].semantic_type
         if owner not in flow.nodes:
             return None
         node = flow.nodes[owner]
@@ -123,6 +147,8 @@ class FlowValidator:
                             "error",
                             "missing_input",
                             f"Node '{node_name}' is missing required input '{expected_port}'",
+                            node_id=node_name,
+                            port_id=expected_port,
                         )
                     )
 
@@ -133,6 +159,8 @@ class FlowValidator:
                             "error",
                             "unknown_input_port",
                             f"Node '{node_name}' has unknown input port '{input_port}'",
+                            node_id=node_name,
+                            port_id=input_port,
                         )
                     )
                     continue
@@ -144,6 +172,8 @@ class FlowValidator:
                             "invalid_source",
                             f"Node '{node_name}' input '{input_port}' references "
                             f"invalid source '{source_ref}'",
+                            node_id=node_name,
+                            port_id=input_port,
                         )
                     )
                     continue
@@ -157,6 +187,8 @@ class FlowValidator:
                             "technical_type_mismatch",
                             f"Node '{node_name}' input '{input_port}': got {actual_type}, "
                             f"expected {expected.type}",
+                            node_id=node_name,
+                            port_id=input_port,
                         )
                     )
                     continue
@@ -174,6 +206,8 @@ class FlowValidator:
                             "semantic_type_mismatch",
                             f"Node '{node_name}' input '{input_port}': '{actual_semantic}' "
                             f"is not compatible with '{expected.semantic_type}'",
+                            node_id=node_name,
+                            port_id=input_port,
                         )
                     )
 
@@ -189,6 +223,8 @@ class FlowValidator:
                             "error",
                             "unknown_parameter",
                             f"Node '{node_name}' has unknown parameter '{param_name}'",
+                            node_id=node_name,
+                            parameter_id=param_name,
                         )
                     )
 
@@ -202,6 +238,8 @@ class FlowValidator:
                                 "missing_parameter",
                                 f"Node '{node_name}' is missing required parameter "
                                 f"'{param_name}'",
+                                node_id=node_name,
+                                parameter_id=param_name,
                             )
                         )
                     continue
@@ -212,6 +250,8 @@ class FlowValidator:
                             "error",
                             "invalid_parameter",
                             f"Node '{node_name}': {error}",
+                            node_id=node_name,
+                            parameter_id=param_name,
                         )
                     )
 
@@ -224,6 +264,7 @@ class FlowValidator:
                         "invalid_flow_output",
                         f"Flow output '{output_name}' references invalid source "
                         f"'{definition.source}'",
+                        output_id=output_name,
                     )
                 )
 

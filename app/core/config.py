@@ -180,6 +180,9 @@ DOWNLOADS_DIR = _env_path("STEMDECK_DOWNLOADS_DIR", DATA_DIR / "downloads")
 MODELS_DIR = _env_path("STEMDECK_MODELS_DIR", DATA_DIR / "models")
 LOGS_DIR = _env_path("STEMDECK_LOGS_DIR", DATA_DIR / "logs")
 FFMPEG_DIR = _env_path("STEMDECK_FFMPEG_DIR", DATA_DIR / "ffmpeg")
+FLOW_DB_PATH = _env_path("STEMDECK_FLOW_DB", DATA_DIR / "flow-engine.sqlite3")
+FLOW_RUNS_DIR = _env_path("STEMDECK_FLOW_RUNS_DIR", DATA_DIR / "flow-runs")
+FLOW_CACHE_DIR = _env_path("STEMDECK_FLOW_CACHE_DIR", DATA_DIR / "flow-cache")
 
 # ── TLS, for server deployments ───────────────────────────────────────────────
 #
